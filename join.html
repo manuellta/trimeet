@@ -43,7 +43,7 @@
   #stage { flex: 1; min-height: 0; }
   #stage video { object-fit: contain; }
   #strip { display: flex; justify-content: center; gap: 10px; height: clamp(110px, 22vh, 210px); flex: none; }
-  #strip .tile { flex: 0 1 auto; height: 100%; aspect-ratio: 16 / 9; max-width: 33%; }
+  #strip .tile { flex: 0 1 auto; height: 100%; aspect-ratio: 16 / 9; max-width: 24%; }
   #strip video { object-fit: cover; }
   #strip .me video { transform: scaleX(-1); }
   .vol { position: absolute; right: 8px; bottom: 8px; display: flex; align-items: center; gap: 6px; padding: 4px 8px; border-radius: 8px; background: rgba(0,0,0,.7); color: #fff; font-size: 12px; }
@@ -55,7 +55,7 @@
   #sync { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; padding: 8px 12px; border-radius: 10px; background: #1e1f22; font-size: 14px; color: #c8ced6; }
   #sync input[type=range] { width: min(260px, 50vw); padding: 0; accent-color: #8fb2ff; }
   #sync small { color: #8a93a0; text-align: left; flex: 1 1 240px; }
-  @media (max-width: 640px) { #strip { height: 90px; } #strip .tile { max-width: 33%; } }
+  @media (max-width: 640px) { #strip { height: 90px; } #strip .tile { max-width: 24%; } }
 </style>
 </head>
 <body>
@@ -97,11 +97,23 @@
         <div class="wait" id="w-host">Host camera...</div>
         <div class="vol"><button type="button" class="mute" data-role="host">Mute</button><input type="range" class="volrange" data-role="host" min="0" max="2" step="0.05" value="1" aria-label="Volume"><span class="pct" data-role="host">100%</span></div>
       </div>
-      <div class="tile">
-        <video id="v-peer" autoplay playsinline></video>
-        <span class="tag">Other friend</span>
-        <div class="wait" id="w-peer">Waiting for the other friend...</div>
-        <div class="vol"><button type="button" class="mute" data-role="peer">Mute</button><input type="range" class="volrange" data-role="peer" min="0" max="2" step="0.05" value="1" aria-label="Volume"><span class="pct" data-role="peer">100%</span></div>
+      <div class="tile" id="t-peer0" hidden>
+        <video id="v-peer0" autoplay playsinline></video>
+        <span class="tag">Friend</span>
+        <div class="wait" id="w-peer0">Waiting...</div>
+        <div class="vol"><button type="button" class="mute" data-role="peer0">Mute</button><input type="range" class="volrange" data-role="peer0" min="0" max="2" step="0.05" value="1" aria-label="Volume"><span class="pct" data-role="peer0">100%</span></div>
+      </div>
+      <div class="tile" id="t-peer1" hidden>
+        <video id="v-peer1" autoplay playsinline></video>
+        <span class="tag">Friend</span>
+        <div class="wait" id="w-peer1">Waiting...</div>
+        <div class="vol"><button type="button" class="mute" data-role="peer1">Mute</button><input type="range" class="volrange" data-role="peer1" min="0" max="2" step="0.05" value="1" aria-label="Volume"><span class="pct" data-role="peer1">100%</span></div>
+      </div>
+      <div class="tile" id="t-peer2" hidden>
+        <video id="v-peer2" autoplay playsinline></video>
+        <span class="tag">Friend</span>
+        <div class="wait" id="w-peer2">Waiting...</div>
+        <div class="vol"><button type="button" class="mute" data-role="peer2">Mute</button><input type="range" class="volrange" data-role="peer2" min="0" max="2" step="0.05" value="1" aria-label="Volume"><span class="pct" data-role="peer2">100%</span></div>
       </div>
       <div class="tile me">
         <video id="preview" autoplay muted playsinline></video>
@@ -117,8 +129,8 @@
   const PREFIX = 'TM1.';
   const RELAY = 'https://ntfy.sh/';
   const RTC_CONFIG = { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] };
-  // Slot order set by the host: 0/1 stranger, 2/3 other friend, 4/5 host (video, audio).
-  const ROLES = ['stranger', 'stranger', 'peer', 'peer', 'host', 'host'];
+  // Slot order set by the host: 0/1 stranger, 2/3 host, then up to three other friends (video, audio).
+  const ROLES = ['stranger', 'stranger', 'host', 'host', 'peer0', 'peer0', 'peer1', 'peer1', 'peer2', 'peer2'];
   const $ = (id) => document.getElementById(id);
 
   const clean = (s) => (s || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
@@ -180,8 +192,8 @@
   }
 
   // Audio goes through Web Audio so each voice has its own volume (up to 200%) and delay.
-  const vol = { stranger: 1, host: 1, peer: 1 };
-  const muted = { stranger: false, host: false, peer: false };
+  const vol = { stranger: 1, host: 1, peer0: 1, peer1: 1, peer2: 1 };
+  const muted = { stranger: false, host: false, peer0: false, peer1: false, peer2: false };
   let syncMs = 0;
   let actx = null;
   const graph = {};
@@ -223,7 +235,7 @@
     Object.keys(graph).forEach((r) => { graph[r].delay.delayTime.value = delayFor(r); });
   });
 
-  const remote = { stranger: new MediaStream(), peer: new MediaStream(), host: new MediaStream() };
+  const remote = { stranger: new MediaStream(), host: new MediaStream(), peer0: new MediaStream(), peer1: new MediaStream(), peer2: new MediaStream() };
   function showRole(role, track) {
     if (!remote[role].getTracks().includes(track)) remote[role].addTrack(track);
     const v = $('v-' + role);
@@ -231,7 +243,13 @@
     v.srcObject = remote[role];
     v.play().catch(() => {});
     if (track.kind === 'audio') wireAudio(role, track);
-    const hideWait = () => { if (remote[role].getVideoTracks().some((t) => !t.muted)) $('w-' + role).hidden = true; };
+    const tile = $('t-' + role);
+    const hideWait = () => {
+      if (remote[role].getVideoTracks().some((t) => !t.muted)) {
+        $('w-' + role).hidden = true;
+        if (tile) tile.hidden = false; // other friends only appear once they have video
+      }
+    };
     track.addEventListener('unmute', hideWait);
     track.addEventListener('mute', () => { if (track.kind === 'video') $('w-' + role).hidden = false; });
     hideWait();
