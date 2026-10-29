@@ -1,0 +1,306 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>TriMeet Join</title>
+<style>
+  :root {
+    --bg: #f5f6f8; --card: #ffffff; --fg: #15181d; --muted: #5d6673;
+    --line: #d9dde3; --accent: #2f6fed; --on-accent: #ffffff; --ok: #14804a; --err: #c0332b;
+    --stage: #000000; --banner: #2f6fed;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #101215; --card: #1a1d22; --fg: #eceef1; --muted: #9aa3b0; --line: #2d323a; --accent: #6b9bff; --on-accent: #08111f; --ok: #5fd39a; --err: #ff8a82; --banner: #8fb2ff; }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--fg); font: 17px/1.5 system-ui, sans-serif; }
+  main { max-width: 1240px; margin: 0 auto; padding: 20px max(16px, env(safe-area-inset-left, 0px)) 48px; display: grid; gap: 16px; }
+  .banner { margin: 0; text-align: center; font-size: clamp(34px, 7vw, 72px); line-height: 1.05; font-weight: 800; letter-spacing: -.02em; color: var(--banner); }
+  .sub { margin: 0; text-align: center; color: var(--muted); }
+  p { margin: 0; color: var(--muted); }
+  section { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 18px; display: grid; gap: 12px; }
+  #setup { max-width: 520px; width: 100%; margin: 0 auto; }
+  ol { margin: 0; padding-left: 20px; color: var(--muted); display: grid; gap: 4px; }
+  label { font-size: 14px; color: var(--muted); }
+  input { width: 100%; border: 1px solid var(--line); border-radius: 10px; padding: 12px; background: var(--bg); color: var(--fg); font: 600 18px/1 ui-monospace, monospace; letter-spacing: .12em; text-transform: uppercase; }
+  button { border: 0; border-radius: 12px; padding: 16px; font-size: 19px; font-weight: 600; background: var(--accent); color: var(--on-accent); cursor: pointer; }
+  button:disabled { opacity: .5; cursor: default; }
+  #status { font-weight: 600; text-align: center; }
+  .ok { color: var(--ok); } .err { color: var(--err); }
+  small { color: var(--muted); font-size: 13px; text-align: center; }
+  [hidden] { display: none !important; }
+
+  /* call view, Discord style: stranger big on top, one row of equal tiles below */
+  body.incall { --bg: #111214; --fg: #eceef1; --muted: #9aa3b0; --banner: #8fb2ff; color-scheme: dark; }
+  body.incall main { max-width: none; height: 100dvh; grid-template-rows: auto minmax(0, 1fr); padding-block: 10px; gap: 10px; }
+  body.incall .banner { font-size: clamp(26px, 4vw, 48px); }
+  #call { display: flex; flex-direction: column; gap: 10px; min-height: 0; }
+  .tile { position: relative; background: #1e1f22; border-radius: 12px; overflow: hidden; }
+  .tile video { display: block; width: 100%; height: 100%; background: #000; }
+  .tile .tag { position: absolute; left: 10px; bottom: 10px; padding: 3px 10px; border-radius: 6px; background: rgba(0,0,0,.65); color: #fff; font-size: 13px; }
+  .tile .wait { position: absolute; inset: 0; display: grid; place-items: center; color: #8a93a0; font-size: 14px; text-align: center; padding: 12px; pointer-events: none; }
+  #stage { flex: 1; min-height: 0; }
+  #stage video { object-fit: contain; }
+  #strip { display: flex; justify-content: center; gap: 10px; height: clamp(110px, 22vh, 210px); flex: none; }
+  #strip .tile { flex: 0 1 auto; height: 100%; aspect-ratio: 16 / 9; max-width: 33%; }
+  #strip video { object-fit: cover; }
+  #strip .me video { transform: scaleX(-1); }
+  .vol { position: absolute; right: 8px; bottom: 8px; display: flex; align-items: center; gap: 6px; padding: 4px 8px; border-radius: 8px; background: rgba(0,0,0,.7); color: #fff; font-size: 12px; }
+  .vol button { padding: 3px 8px; border-radius: 6px; font-size: 12px; font-weight: 600; background: #3a3d44; color: #fff; }
+  .vol button.on { background: #c0332b; }
+  .vol input[type=range] { width: 90px; padding: 0; accent-color: #8fb2ff; }
+  .vol .pct { min-width: 34px; text-align: right; }
+  #strip .vol input[type=range] { width: 60px; }
+  #sync { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; padding: 8px 12px; border-radius: 10px; background: #1e1f22; font-size: 14px; color: #c8ced6; }
+  #sync input[type=range] { width: min(260px, 50vw); padding: 0; accent-color: #8fb2ff; }
+  #sync small { color: #8a93a0; text-align: left; flex: 1 1 240px; }
+  @media (max-width: 640px) { #strip { height: 90px; } #strip .tile { max-width: 33%; } }
+</style>
+</head>
+<body>
+<main>
+  <h1 class="banner">Made by Emanuel Kung</h1>
+  <p class="sub" id="sub">TriMeet. Join your friend's Ome.tv call.</p>
+
+  <section id="setup">
+    <ol id="steps">
+      <li>Press the button below.</li>
+      <li>Allow your camera and microphone.</li>
+      <li>Keep this tab open while you chat.</li>
+    </ol>
+    <div id="codebox" hidden>
+      <label for="code">Code from your friend</label>
+      <input id="code" maxlength="14" autocomplete="off" spellcheck="false" placeholder="K7M2QX9PDA">
+    </div>
+    <button id="go">Join the call</button>
+    <div id="status" class="muted" hidden></div>
+  </section>
+
+  <div id="call" hidden>
+    <div id="stage" class="tile">
+      <video id="v-stranger" autoplay playsinline></video>
+      <span class="tag">Who your friend is talking to</span>
+      <div class="wait" id="w-stranger">Waiting for the next person. This starts when your friend presses Start.</div>
+      <div class="vol"><button type="button" class="mute" data-role="stranger">Mute</button><input type="range" class="volrange" data-role="stranger" min="0" max="2" step="0.05" value="1" aria-label="Volume"><span class="pct" data-role="stranger">100%</span></div>
+    </div>
+    <div id="sync">
+      <label for="syncRange">Voice sync</label>
+      <input id="syncRange" type="range" min="0" max="1500" step="10" value="0">
+      <span id="syncVal">0 ms</span>
+      <small>The stranger arrives a little later than the others. If you hear the host answer before you hear the question, raise this until it lines up.</small>
+    </div>
+    <div id="strip">
+      <div class="tile">
+        <video id="v-host" autoplay playsinline></video>
+        <span class="tag">Host</span>
+        <div class="wait" id="w-host">Host camera...</div>
+        <div class="vol"><button type="button" class="mute" data-role="host">Mute</button><input type="range" class="volrange" data-role="host" min="0" max="2" step="0.05" value="1" aria-label="Volume"><span class="pct" data-role="host">100%</span></div>
+      </div>
+      <div class="tile">
+        <video id="v-peer" autoplay playsinline></video>
+        <span class="tag">Other friend</span>
+        <div class="wait" id="w-peer">Waiting for the other friend...</div>
+        <div class="vol"><button type="button" class="mute" data-role="peer">Mute</button><input type="range" class="volrange" data-role="peer" min="0" max="2" step="0.05" value="1" aria-label="Volume"><span class="pct" data-role="peer">100%</span></div>
+      </div>
+      <div class="tile me">
+        <video id="preview" autoplay muted playsinline></video>
+        <span class="tag">You</span>
+      </div>
+    </div>
+    <small>Use headphones so the stranger does not hear an echo. Your video and sound go straight to the others. A public relay (ntfy.sh) is only used for a few seconds to set up the connection.</small>
+  </div>
+</main>
+
+<script>
+(() => {
+  const PREFIX = 'TM1.';
+  const RELAY = 'https://ntfy.sh/';
+  const RTC_CONFIG = { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] };
+  // Slot order set by the host: 0/1 stranger, 2/3 other friend, 4/5 host (video, audio).
+  const ROLES = ['stranger', 'stranger', 'peer', 'peer', 'host', 'host'];
+  const $ = (id) => document.getElementById(id);
+
+  const clean = (s) => (s || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+  let room = clean(decodeURIComponent(location.hash.slice(1)));
+  if (room.length < 6) { room = ''; $('codebox').hidden = false; }
+
+  function setStatus(text, cls) {
+    const s = $('status');
+    s.hidden = false;
+    s.textContent = text;
+    s.className = cls || 'muted';
+  }
+
+  async function pack(obj) {
+    const bytes = new TextEncoder().encode(JSON.stringify(obj));
+    const cs = new CompressionStream('gzip');
+    const w = cs.writable.getWriter(); w.write(bytes); w.close();
+    const buf = await new Response(cs.readable).arrayBuffer();
+    let bin = ''; new Uint8Array(buf).forEach((b) => (bin += String.fromCharCode(b)));
+    return PREFIX + btoa(bin).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+  }
+  async function unpack(code) {
+    let b64 = code.trim().replace(/\s+/g, '');
+    if (!b64.startsWith(PREFIX)) throw new Error('Unexpected setup message.');
+    b64 = b64.slice(PREFIX.length).replace(/-/g, '+').replace(/_/g, '/');
+    while (b64.length % 4) b64 += '=';
+    const bytes = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
+    const ds = new DecompressionStream('gzip');
+    const w = ds.writable.getWriter(); w.write(bytes); w.close();
+    return JSON.parse(await new Response(ds.readable).text());
+  }
+  function iceComplete(pc) {
+    return new Promise((resolve) => {
+      if (pc.iceGatheringState === 'complete') return resolve();
+      const t = setTimeout(done, 6000);
+      function chk() { if (pc.iceGatheringState === 'complete') done(); }
+      function done() { clearTimeout(t); pc.removeEventListener('icegatheringstatechange', chk); resolve(); }
+      pc.addEventListener('icegatheringstatechange', chk);
+    });
+  }
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+  async function fetchOffer(roomId) {
+    let busy = false;
+    for (let i = 0; i < 6; i++) {
+      const res = await fetch(RELAY + 'tm-' + roomId + '-o/json?poll=1&since=all');
+      if (res.status === 429) busy = true;
+      if (res.ok) {
+        const lines = (await res.text()).split('\n').filter((l) => l.trim());
+        for (let j = lines.length - 1; j >= 0; j--) {
+          let ev; try { ev = JSON.parse(lines[j]); } catch (_) { continue; }
+          if (ev.event === 'message' && ev.message) return ev.message;
+        }
+      }
+      await sleep(busy ? 8000 : 3000);
+    }
+    if (busy) throw new Error('The connection service is busy right now. Wait a minute and press the button again.');
+    throw new Error('That invite was not found. It may have expired. Ask your friend to send a new one.');
+  }
+
+  // Audio goes through Web Audio so each voice has its own volume (up to 200%) and delay.
+  const vol = { stranger: 1, host: 1, peer: 1 };
+  const muted = { stranger: false, host: false, peer: false };
+  let syncMs = 0;
+  let actx = null;
+  const graph = {};
+  function ensureCtx() {
+    if (!actx) actx = new (window.AudioContext || window.webkitAudioContext)();
+    if (actx.state === 'suspended') actx.resume().catch(() => {});
+    return actx;
+  }
+  const gainFor = (role) => (muted[role] ? 0 : vol[role]);
+  const delayFor = (role) => (role === 'stranger' ? 0 : syncMs / 1000);
+  function wireAudio(role, track) {
+    if (graph[role] && graph[role].track === track) return;
+    const ctx = ensureCtx();
+    if (graph[role]) { try { graph[role].src.disconnect(); } catch (_) {} }
+    const src = ctx.createMediaStreamSource(new MediaStream([track]));
+    const delay = ctx.createDelay(2);
+    const gain = ctx.createGain();
+    delay.delayTime.value = delayFor(role);
+    gain.gain.value = gainFor(role);
+    src.connect(delay); delay.connect(gain); gain.connect(ctx.destination);
+    graph[role] = { track, src, delay, gain };
+  }
+  function applyVolume(role) {
+    if (graph[role]) graph[role].gain.gain.value = gainFor(role);
+    const pct = document.querySelector('.pct[data-role="' + role + '"]');
+    if (pct) pct.textContent = muted[role] ? 'muted' : Math.round(vol[role] * 100) + '%';
+    const btn = document.querySelector('.mute[data-role="' + role + '"]');
+    if (btn) { btn.classList.toggle('on', muted[role]); btn.textContent = muted[role] ? 'Unmute' : 'Mute'; }
+  }
+  document.querySelectorAll('.volrange').forEach((input) => {
+    input.addEventListener('input', () => { const r = input.dataset.role; vol[r] = parseFloat(input.value); muted[r] = false; applyVolume(r); });
+  });
+  document.querySelectorAll('.mute').forEach((btn) => {
+    btn.addEventListener('click', () => { const r = btn.dataset.role; muted[r] = !muted[r]; applyVolume(r); });
+  });
+  $('syncRange').addEventListener('input', () => {
+    syncMs = parseInt($('syncRange').value, 10);
+    $('syncVal').textContent = syncMs + ' ms';
+    Object.keys(graph).forEach((r) => { graph[r].delay.delayTime.value = delayFor(r); });
+  });
+
+  const remote = { stranger: new MediaStream(), peer: new MediaStream(), host: new MediaStream() };
+  function showRole(role, track) {
+    if (!remote[role].getTracks().includes(track)) remote[role].addTrack(track);
+    const v = $('v-' + role);
+    v.muted = true; // sound is played through Web Audio below
+    v.srcObject = remote[role];
+    v.play().catch(() => {});
+    if (track.kind === 'audio') wireAudio(role, track);
+    const hideWait = () => { if (remote[role].getVideoTracks().some((t) => !t.muted)) $('w-' + role).hidden = true; };
+    track.addEventListener('unmute', hideWait);
+    track.addEventListener('mute', () => { if (track.kind === 'video') $('w-' + role).hidden = false; });
+    hideWait();
+  }
+
+  let pc = null;
+  $('go').addEventListener('click', async () => {
+    const btn = $('go');
+    btn.disabled = true;
+    try {
+      if (!room) room = clean($('code').value);
+      if (room.length < 6) throw new Error('Enter the code your friend sent you.');
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        throw new Error('This page cannot use your camera. Open the link in Chrome, Edge, Safari or Firefox.');
+      }
+
+      ensureCtx();
+      setStatus('Asking for your camera...');
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { width: { ideal: 1280 }, height: { ideal: 720 } },
+        audio: { echoCancellation: true, noiseSuppression: true },
+      });
+      $('preview').srcObject = stream;
+
+      setStatus('Finding your friend...');
+      const offer = await unpack(await fetchOffer(room));
+      if (offer.t !== 'offer') throw new Error('That invite is not valid. Ask your friend for a new one.');
+
+      if (pc) pc.close();
+      pc = new RTCPeerConnection(RTC_CONFIG);
+      pc.onconnectionstatechange = () => {
+        if (pc.connectionState === 'connected') setStatus('You are on the call. Keep this tab open.', 'ok');
+        else if (pc.connectionState === 'failed') setStatus('Could not connect. Ask your friend for a new invite.', 'err');
+        else if (pc.connectionState === 'disconnected') setStatus('Connection dropped...', 'err');
+      };
+      pc.ontrack = (e) => {
+        const idx = pc.getTransceivers().indexOf(e.transceiver);
+        const role = ROLES[idx];
+        if (role === 'stranger') {
+          // Keep the stranger's audio as close to live as possible.
+          try { e.receiver.jitterBufferTarget = 0; } catch (_) {}
+          try { e.receiver.playoutDelayHint = 0; } catch (_) {}
+        }
+        if (role) showRole(role, e.track);
+      };
+      await pc.setRemoteDescription({ type: 'offer', sdp: offer.sdp });
+      stream.getTracks().forEach((t) => pc.addTrack(t, stream));
+      await pc.setLocalDescription(await pc.createAnswer());
+      await iceComplete(pc);
+
+      setStatus('Connecting...');
+      const reply = await fetch(RELAY + 'tm-' + room + '-a', {
+        method: 'POST',
+        body: await pack({ t: 'answer', sdp: pc.localDescription.sdp }),
+      });
+      if (!reply.ok) throw new Error('Could not reach your friend (relay error ' + reply.status + ').');
+
+      $('steps').hidden = true;
+      $('codebox').hidden = true;
+      btn.hidden = true;
+      $('sub').hidden = true;
+      $('call').hidden = false;
+      document.body.classList.add('incall');
+    } catch (err) {
+      setStatus(String((err && err.message) || err), 'err');
+      btn.disabled = false;
+    }
+  });
+})();
+</script>
+</body>
+</html>
